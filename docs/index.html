@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Wiki — Concept Graph</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3a;
+      --text:      #e2e8f0;
+      --text-dim:  #94a3b8;
+      --accent:    #6366f1;
+
+      --core:      #60a5fa;   /* blue   */
+      --technique: #34d399;   /* green  */
+      --model:     #a78bfa;   /* purple */
+      --tool:      #fb923c;   /* orange */
+      --paper:     #f87171;   /* red    */
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+    header span { font-size: 0.8rem; color: var(--text-dim); }
+    .header-links { margin-left: auto; display: flex; gap: 12px; }
+    .header-links a {
+      font-size: 0.8rem;
+      color: var(--accent);
+      text-decoration: none;
+      padding: 4px 10px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+    .header-links a:hover { background: rgba(99,102,241,0.15); }
+
+    /* ── Legend ─────────────────────────────────────────────────────── */
+    .legend {
+      display: flex;
+      gap: 16px;
+      padding: 8px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-dim); cursor: pointer; }
+    .legend-item:hover { color: var(--text); }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .legend-item.dimmed { opacity: 0.35; }
+
+    /* ── Controls ───────────────────────────────────────────────────── */
+    .controls {
+      position: absolute;
+      bottom: 24px;
+      left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 20;
+    }
+    .ctrl-btn {
+      width: 34px; height: 34px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+    }
+    .ctrl-btn:hover { background: var(--border); }
+
+    /* ── Search ─────────────────────────────────────────────────────── */
+    .search-wrap {
+      position: absolute;
+      top: 16px;
+      right: 20px;
+      z-index: 20;
+    }
+    .search-wrap input {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      color: var(--text);
+      font-size: 0.85rem;
+      width: 200px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-wrap input:focus { border-color: var(--accent); }
+    .search-wrap input::placeholder { color: var(--text-dim); }
+
+    /* ── Canvas ─────────────────────────────────────────────────────── */
+    #graph-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    svg { width: 100%; height: 100%; }
+
+    /* ── Tooltip ────────────────────────────────────────────────────── */
+    #tooltip {
+      position: absolute;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      max-width: 260px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 30;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    #tooltip.visible { opacity: 1; }
+    #tooltip .tt-label { font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; }
+    #tooltip .tt-group { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; opacity: 0.6; }
+    #tooltip .tt-desc  { font-size: 0.82rem; color: var(--text-dim); line-height: 1.4; }
+    #tooltip .tt-link  { display: inline-block; margin-top: 10px; font-size: 0.78rem; color: var(--accent); text-decoration: none; }
+    #tooltip .tt-link:hover { text-decoration: underline; }
+
+    /* ── Nodes & Links ──────────────────────────────────────────────── */
+    .node circle {
+      stroke-width: 2;
+      cursor: pointer;
+      transition: r 0.15s;
+    }
+    .node text {
+      font-size: 10px;
+      fill: var(--text);
+      text-anchor: middle;
+      pointer-events: none;
+      dominant-baseline: central;
+    }
+    .node.highlighted circle { stroke: white !important; stroke-width: 3; }
+    .node.dimmed { opacity: 0.12; }
+
+    .link {
+      stroke: var(--border);
+      stroke-opacity: 0.7;
+      fill: none;
+    }
+    .link.highlighted { stroke: #ffffff60; stroke-width: 2; }
+    .link.dimmed { opacity: 0.05; }
+
+    .link-label {
+      font-size: 8px;
+      fill: var(--text-dim);
+      pointer-events: none;
+    }
+    .link-label.dimmed { opacity: 0.05; }
+
+    /* ── Stats ──────────────────────────────────────────────────────── */
+    .stats {
+      position: absolute;
+      bottom: 24px;
+      right: 20px;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      text-align: right;
+      z-index: 20;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🧠 LLM Wiki</h1>
+  <span>Concept Network Graph</span>
+  <div class="header-links">
+    <a href="https://github.com/your-username/llm-wiki" target="_blank">GitHub</a>
+    <a href="../README.md">Wiki Home</a>
+  </div>
+</header>
+
+<div class="legend" id="legend"></div>
+
+<div id="graph-container">
+  <div class="search-wrap">
+    <input type="text" id="search" placeholder="Search concepts…" />
+  </div>
+
+  <svg id="graph"></svg>
+
+  <div class="controls">
+    <button class="ctrl-btn" id="zoom-in"  title="Zoom in">+</button>
+    <button class="ctrl-btn" id="zoom-out" title="Zoom out">−</button>
+    <button class="ctrl-btn" id="reset"    title="Reset view">⊙</button>
+  </div>
+
+  <div class="stats" id="stats"></div>
+</div>
+
+<div id="tooltip">
+  <div class="tt-label" id="tt-label"></div>
+  <div class="tt-group" id="tt-group"></div>
+  <div class="tt-desc"  id="tt-desc"></div>
+  <a  class="tt-link"  id="tt-link" href="#">Read more →</a>
+</div>
+
+<script src="graph-data.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
+const GROUP_COLOR = {
+  core:      "var(--core)",
+  technique: "var(--technique)",
+  model:     "var(--model)",
+  tool:      "var(--tool)",
+  paper:     "var(--paper)",
+};
+const GROUP_HEX = {
+  core:      "#60a5fa",
+  technique: "#34d399",
+  model:     "#a78bfa",
+  tool:      "#fb923c",
+  paper:     "#f87171",
+};
+const GROUP_LABEL = {
+  core:      "Core Concept",
+  technique: "Technique",
+  model:     "Model",
+  tool:      "Tool / Framework",
+  paper:     "Paper",
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEGEND
+// ─────────────────────────────────────────────────────────────────────────────
+const legendEl = document.getElementById("legend");
+const activeGroups = new Set(Object.keys(GROUP_COLOR));
+
+Object.entries(GROUP_LABEL).forEach(([g, label]) => {
+  const item = document.createElement("div");
+  item.className = "legend-item";
+  item.dataset.group = g;
+  item.innerHTML = `<div class="legend-dot" style="background:${GROUP_HEX[g]}"></div><span>${label}</span>`;
+  item.addEventListener("click", () => toggleGroup(g, item));
+  legendEl.appendChild(item);
+});
+
+function toggleGroup(g, el) {
+  if (activeGroups.has(g)) { activeGroups.delete(g); el.classList.add("dimmed"); }
+  else                      { activeGroups.add(g);    el.classList.remove("dimmed"); }
+  updateVisibility();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D3 SETUP
+// ─────────────────────────────────────────────────────────────────────────────
+const container = document.getElementById("graph-container");
+const svg = d3.select("#graph");
+const tooltip = document.getElementById("tooltip");
+
+const g = svg.append("g");
+
+const zoom = d3.zoom()
+  .scaleExtent([0.2, 4])
+  .on("zoom", e => g.attr("transform", e.transform));
+
+svg.call(zoom);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIMULATION
+// ─────────────────────────────────────────────────────────────────────────────
+const nodes = graphData.nodes.map(d => ({ ...d }));
+const links = graphData.links.map(d => ({ ...d }));
+
+const simulation = d3.forceSimulation(nodes)
+  .force("link",   d3.forceLink(links).id(d => d.id).distance(110).strength(0.4))
+  .force("charge", d3.forceManyBody().strength(-420))
+  .force("center", d3.forceCenter(0, 0))
+  .force("collide", d3.forceCollide(48));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ARROW MARKER
+// ─────────────────────────────────────────────────────────────────────────────
+svg.append("defs").append("marker")
+  .attr("id", "arrowhead")
+  .attr("viewBox", "0 -4 8 8")
+  .attr("refX", 22)
+  .attr("refY", 0)
+  .attr("markerWidth", 6)
+  .attr("markerHeight", 6)
+  .attr("orient", "auto")
+  .append("path")
+  .attr("d", "M0,-4L8,0L0,4")
+  .attr("fill", "#3a3d50");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DRAW LINKS
+// ─────────────────────────────────────────────────────────────────────────────
+const linkGroup = g.append("g").attr("class", "links");
+
+const linkEl = linkGroup.selectAll(".link")
+  .data(links)
+  .join("line")
+  .attr("class", "link")
+  .attr("marker-end", "url(#arrowhead)");
+
+const linkLabelEl = linkGroup.selectAll(".link-label")
+  .data(links)
+  .join("text")
+  .attr("class", "link-label")
+  .text(d => d.label || "");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DRAW NODES
+// ─────────────────────────────────────────────────────────────────────────────
+const nodeGroup = g.append("g").attr("class", "nodes");
+
+function nodeRadius(d) {
+  const degree = links.filter(l => l.source.id === d.id || l.target.id === d.id).length;
+  return 16 + degree * 2.5;
+}
+
+const nodeEl = nodeGroup.selectAll(".node")
+  .data(nodes)
+  .join("g")
+  .attr("class", "node")
+  .call(
+    d3.drag()
+      .on("start", (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on("drag",  (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on("end",   (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+  )
+  .on("mouseover", showTooltip)
+  .on("mousemove", moveTooltip)
+  .on("mouseout",  hideTooltip)
+  .on("click",     (e, d) => { e.stopPropagation(); highlightNode(d); });
+
+nodeEl.append("circle")
+  .attr("r", nodeRadius)
+  .attr("fill", d => GROUP_HEX[d.group] + "22")
+  .attr("stroke", d => GROUP_HEX[d.group]);
+
+// Multi-line labels
+nodeEl.each(function(d) {
+  const el = d3.select(this);
+  const lines = d.label.split("\n");
+  const lineHeight = 12;
+  const offsetY = -(lines.length - 1) * lineHeight / 2;
+  lines.forEach((line, i) => {
+    el.append("text")
+      .attr("dy", offsetY + i * lineHeight)
+      .text(line);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIMULATION TICK
+// ─────────────────────────────────────────────────────────────────────────────
+simulation.on("tick", () => {
+  linkEl
+    .attr("x1", d => d.source.x)
+    .attr("y1", d => d.source.y)
+    .attr("x2", d => d.target.x)
+    .attr("y2", d => d.target.y);
+
+  linkLabelEl
+    .attr("x", d => (d.source.x + d.target.x) / 2)
+    .attr("y", d => (d.source.y + d.target.y) / 2);
+
+  nodeEl.attr("transform", d => `translate(${d.x},${d.y})`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOOLTIP
+// ─────────────────────────────────────────────────────────────────────────────
+function showTooltip(e, d) {
+  document.getElementById("tt-label").textContent = d.label.replace("\n", " ");
+  document.getElementById("tt-group").textContent = GROUP_LABEL[d.group] || d.group;
+  document.getElementById("tt-desc").textContent  = d.description || "";
+  const link = document.getElementById("tt-link");
+  link.href = d.url || "#";
+  link.style.display = d.url ? "inline-block" : "none";
+  tooltip.classList.add("visible");
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  const x = e.clientX + 16;
+  const y = e.clientY - 10;
+  tooltip.style.left = Math.min(x, window.innerWidth - 280) + "px";
+  tooltip.style.top  = Math.min(y, window.innerHeight - 160) + "px";
+}
+function hideTooltip() { tooltip.classList.remove("visible"); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HIGHLIGHT ON CLICK
+// ─────────────────────────────────────────────────────────────────────────────
+let highlighted = null;
+
+svg.on("click", () => clearHighlight());
+
+function highlightNode(d) {
+  if (highlighted === d.id) { clearHighlight(); return; }
+  highlighted = d.id;
+
+  const connectedIds = new Set([d.id]);
+  const connectedLinks = new Set();
+
+  links.forEach((l, i) => {
+    const s = l.source.id || l.source;
+    const t = l.target.id || l.target;
+    if (s === d.id || t === d.id) {
+      connectedIds.add(s);
+      connectedIds.add(t);
+      connectedLinks.add(i);
+    }
+  });
+
+  nodeEl.classed("highlighted", n => n.id === d.id)
+        .classed("dimmed", n => !connectedIds.has(n.id));
+  linkEl.classed("highlighted", (_, i) => connectedLinks.has(i))
+        .classed("dimmed", (_, i) => !connectedLinks.has(i));
+  linkLabelEl.classed("dimmed", (_, i) => !connectedLinks.has(i));
+}
+
+function clearHighlight() {
+  highlighted = null;
+  nodeEl.classed("highlighted dimmed", false);
+  linkEl.classed("highlighted dimmed", false);
+  linkLabelEl.classed("dimmed", false);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GROUP VISIBILITY FILTER
+// ─────────────────────────────────────────────────────────────────────────────
+function updateVisibility() {
+  nodeEl.classed("dimmed", d => !activeGroups.has(d.group));
+  linkEl.classed("dimmed", d => {
+    const s = d.source.group || nodes.find(n => n.id === (d.source.id || d.source))?.group;
+    const t = d.target.group || nodes.find(n => n.id === (d.target.id || d.target))?.group;
+    return !activeGroups.has(s) || !activeGroups.has(t);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SEARCH
+// ─────────────────────────────────────────────────────────────────────────────
+document.getElementById("search").addEventListener("input", function() {
+  const q = this.value.toLowerCase().trim();
+  if (!q) { clearHighlight(); return; }
+  const match = nodes.find(n => n.label.toLowerCase().includes(q) || n.id.toLowerCase().includes(q));
+  if (match) {
+    highlightNode(match);
+    // Pan to node
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    svg.transition().duration(600).call(
+      zoom.transform,
+      d3.zoomIdentity.translate(w / 2 - match.x, h / 2 - match.y).scale(1.2)
+    );
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ZOOM CONTROLS
+// ─────────────────────────────────────────────────────────────────────────────
+document.getElementById("zoom-in").addEventListener("click",  () => svg.transition().duration(300).call(zoom.scaleBy, 1.4));
+document.getElementById("zoom-out").addEventListener("click", () => svg.transition().duration(300).call(zoom.scaleBy, 0.7));
+document.getElementById("reset").addEventListener("click", () => {
+  clearHighlight();
+  svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATS
+// ─────────────────────────────────────────────────────────────────────────────
+document.getElementById("stats").textContent =
+  `${nodes.length} concepts · ${links.length} connections`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INITIAL FIT
+// ─────────────────────────────────────────────────────────────────────────────
+simulation.on("end", () => {
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  svg.call(zoom.transform, d3.zoomIdentity.translate(w / 2, h / 2).scale(0.9));
+});
+</script>
+</body>
+</html>

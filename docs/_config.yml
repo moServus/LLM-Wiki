@@ -1,0 +1,13 @@
+title: LLM Wiki
+description: A personal knowledge base for Large Language Models — with an interactive concept graph.
+theme: minima
+baseurl: "/llm-wiki"
+url: "https://your-username.github.io"
+
+# GitHub Pages settings
+markdown: kramdown
+highlighter: rouge
+
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
