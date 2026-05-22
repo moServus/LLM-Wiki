@@ -5,6 +5,7 @@ tags: [llm-wiki, knowledge-management, tutorial, youtube]
 sources: [karpathy-llm-wiki-explained.md]
 created: 2026-05-22
 updated: 2026-05-22
+assets: [rawSources/assets/karpathy-llm-wiki/]
 ---
 
 # Karpathy's LLM Wiki Explained (YouTube, AI Simplified)
@@ -40,6 +41,34 @@ This source is a video companion to the Karpathy idea file. New emphasis over th
 7. Monthly: "run a full health check on the wiki folder"
    → lint pass: broken links, duplicate tags, concept gaps
 ```
+
+## Video chapters
+
+### 1. The Problem with Temporary AI Chat Sessions `[00:00:00]`
+
+![Chapter 1](../../rawSources/assets/karpathy-llm-wiki/chapter_01_the-problem-with-temporary-ai-chat-sessions.png)
+
+The video highlights the inefficiency of traditional AI chat interfaces where carefully built context is lost after each session, forcing the AI to restart from scratch for complex problems. It proposes building an LLM Wiki as a solution that acts as a persistent bookkeeper for your knowledge.
+
+### 2. Setting Up the LLM Wiki Directory `[00:00:20]`
+
+![Chapter 2](../../rawSources/assets/karpathy-llm-wiki/chapter_02_setting-up-the-llm-wiki-directory.png)
+
+The first step involves creating a master folder with two subfolders: `rawSources/` (read-only for the AI) and `wiki/`. A `schema.md` configuration file placed in the root directory establishes strict rules for directory structure, naming conventions, and file formatting, turning a generic AI into a disciplined archivist.
+
+### 3. AI Navigation and Data Ingestion `[00:02:26]`
+
+![Chapter 3](../../rawSources/assets/karpathy-llm-wiki/chapter_03_ai-navigation-and-data-ingestion.png)
+
+Inside the `wiki/` subfolder, two blank text files — `index.md` and `log.md` — are created. The `log.md` uses a specific Unix-style date format for easy parsing. The ingestion workflow demonstrates how dropping a document into `rawSources/` prompts the AI to read, summarize, cross-reference, and log the entry automatically.
+
+### 4. Querying, Linking, and Database Maintenance `[00:05:10]`
+
+![Chapter 4](../../rawSources/assets/karpathy-llm-wiki/chapter_04_querying-linking-and-database-maintenance.png)
+
+After ingesting sources, users prompt the AI with specific questions, forcing it to compare new documents against existing wiki topics and save the synthesis as a new, linked permanent page. A monthly lint pass prompts the AI to perform a health check — fixing broken links, duplicate tags, and organizational gaps autonomously.
+
+---
 
 ## Limitations / gaps
 
